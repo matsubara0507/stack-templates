@@ -44,7 +44,6 @@ before_install:
   fi
 
 install:
-- echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
 - stack new sample "./$TEMPLATE"
 - |
   set -ex
@@ -53,9 +52,7 @@ install:
   set +ex
 
 script:
-- stack new sample "./$TEMPLATE"
 - |
   set -ex
-  cd sample
   stack --no-terminal $ARGS test --bench --no-run-benchmarks --no-haddock-deps
   set +ex
