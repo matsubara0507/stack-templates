@@ -42,6 +42,7 @@ before_install:
   then
     echo 'jobs: $ncpus' >> $HOME/.cabal/config
   fi
+- stack install tasty-discover
 
 install:
 - stack new sample "./$TEMPLATE"
