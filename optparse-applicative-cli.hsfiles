@@ -1,0 +1,323 @@
+{-# START_FILE package.yaml #-}
+name:                {{name}}
+version:             0.1.0.0
+#synopsis:
+#description:
+homepage:            https://github.com/{{github-username}}{{^github-username}}githubuser{{/github-username}}/{{name}}#readme
+license:             MIT
+author:              {{author-name}}{{^author-name}}Author name here{{/author-name}}
+maintainer:          {{author-email}}{{^author-email}}example@example.com{{/author-email}}
+copyright:           {{copyright}}{{^copyright}}{{year}}{{^year}}2018{{/year}} {{author-name}}{{^author-name}}Author name here{{/author-name}}{{/copyright}}
+category:            {{category}}{{^category}}Web{{/category}}
+description:         Please see the README on GitHub at <https://github.com/{{github-username}}{{^github-username}}githubuser{{/github-username}}/{{name}}#readme>
+
+extra-source-files:
+- README.md
+- CHANGELOG.md
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wredundant-constraints
+
+default-extensions:
+- NoImplicitPrelude
+
+- ConstraintKinds
+- FlexibleContexts
+- FlexibleInstances
+- GeneralizedNewtypeDeriving
+- OverloadedStrings
+- PolyKinds
+- RankNTypes
+- StandaloneDeriving
+- TypeFamilies
+- TypeSynonymInstances
+
+dependencies:
+- base >= 4.7 && < 5
+- rio >= 0.1.1.0
+- extensible >= 0.4.9
+- yaml
+
+library:
+  source-dirs: src
+
+executables:
+  {{name}}:
+    main: Main.hs
+    source-dirs: app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - {{name}}
+    - gitrev
+    - optparse-applicative
+
+tests:
+  {{name}}-test:
+    main: Driver.hs
+    source-dirs: test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - {{name}}
+    - tasty
+    - tasty-hspec
+    other-modules: []
+
+{-# START_FILE Setup.hs #-}
+import Distribution.Simple
+main = defaultMain
+
+{-# START_FILE app/Main.hs #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLabels      #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+module Main where
+
+import qualified Paths_{{name}} as Meta -- ToDo: modify '-' to '_'
+import           RIO
+
+import           Data.Extensible
+import           Data.Version         (Version)
+import qualified Data.Version         as Version
+import           Development.GitRev
+import           GHC.TypeLits
+import           Lib.Cmd -- ToDo: rename
+import           Options.Applicative
+
+main :: IO ()
+main = run =<< execParser opts
+  where
+    opts = info (options <**> version Meta.version <**> helper)
+         $ fullDesc
+        <> header "taskpad - operate daily tasks"
+
+options :: Parser Options
+options = hsequence
+    $ #verbose <@=> switch (long "verbose" <> short 'v' <> help "Enable verbose mode: verbosity level \"debug\"")
+   <: #config  <@=> strOption (long "config" <> short 'c' <> value "config.yaml" <> metavar "PATH" <> help "Configuration file")
+   <: #subcmd  <@=> subcmdParser
+   <: nil
+
+subcmdParser :: Parser SubCmd
+subcmdParser = variantFrom
+    $ #command1 @= hogeCmdParser `withInfo` "Hoge command."
+   <: #command2 @= hogeCmdParser `withInfo` "Fuga command."
+   <: nil
+
+hogeCmdParser :: Parser HogeCommand
+hogeCmdParser = hsequence
+    $ #hoge <@=> option (Just <$> str) (long "hoge" <> value Nothing <> metavar "TEXT" <> help "hoge hoge hoge!")
+   <: nil
+
+variantFrom ::
+  Forall (KeyIs KnownSymbol) xs => RecordOf ParserInfo xs -> Parser (Variant xs)
+variantFrom = subparser . subcmdVariant
+  where
+    subcmdVariant = hfoldMapWithIndexFor (Proxy @ (KeyIs KnownSymbol)) $ \m x ->
+      let k = symbolVal (proxyAssocKey m)
+      in command k ((EmbedAt m . Field . pure) <$> getField x)
+
+instance Wrapper ParserInfo where
+  type Repr ParserInfo a = ParserInfo a
+  _Wrapper = id
+
+withInfo :: Parser a -> String -> ParserInfo a
+withInfo opts = info (helper <*> opts) . progDesc
+
+version :: Version -> Parser (a -> a)
+version v = infoOption (showVersion v)
+    $ long "version"
+   <> help "Show version"
+
+showVersion :: Version -> String
+showVersion v = unwords
+  [ "Version"
+  , Version.showVersion v ++ ","
+  , "Git revision"
+  , $(gitHash)
+  , "(" ++ $(gitCommitCount) ++ " commits)"
+  ]
+
+{-# START_FILE src/Lib/Cmd.hs #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators    #-}
+
+module Lib.Cmd
+    ( module X
+    , run
+    ) where
+
+import           RIO
+
+import           Data.Extensible
+import           Lib.Cmd.Options as X
+import           Lib.Cmd.Run     as X
+import           Lib.Config      (readConfig)
+
+run :: (MonadUnliftIO m, MonadThrow m) => Options -> m ()
+run opts = do
+  config  <- readConfig (opts ^. #config)
+  logOpts <- logOptionsHandle stdout (opts ^. #verbose)
+  withLogFunc logOpts $ \logger -> do
+    let env = #config @= config
+           <: #logger @= logger
+           <: nil
+    runRIO env $ matchField
+      (htabulateFor (Proxy @ Run) $ \m -> Field (Match $ run' m . runIdentity))
+      (opts ^. #subcmd)
+
+{-# START_FILE src/Lib/Cmd/Options.hs #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeOperators    #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+module Lib.Cmd.Options where
+
+import           RIO
+
+import           Data.Extensible
+import           Lib.Cmd.Run
+
+type Options = Record
+  '[ "verbose" >: Bool
+   , "config"  >: FilePath
+   , "subcmd"  >: SubCmd
+   ]
+
+type SubCmd = Variant SubCmdFields
+
+type SubCmdFields =
+  '[ "command1" >: HogeCommand
+   , "command2" >: HogeCommand
+   ]
+
+type HogeCommand = Record
+  '[ "hoge" >: Maybe Text
+   ]
+
+instance Run ("command1" >: HogeCommand) where
+  run' _ _ = showNotImpl
+
+instance Run ("command2" >: HogeCommand) where
+  run' _ _ = showNotImpl
+
+{-# START_FILE src/Lib/Cmd/Run.hs #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators    #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+module Lib.Cmd.Run where
+
+import           RIO
+
+import           Data.Extensible
+import           Lib.Env
+
+showNotImpl :: MonadIO m => m ()
+showNotImpl = hPutBuilder stdout "not yet implement command."
+
+class Run kv where
+  run' :: proxy kv -> AssocValue kv -> RIO Env ()
+
+{-# START_FILE src/Lib/Env.hs #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeOperators    #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+module Lib.Env where
+
+import           RIO
+
+import           Data.Extensible
+import           Lib.Config
+
+type Env = Record
+  '[ "config" >: Config
+   , "logger" >: LogFunc
+   ]
+
+instance HasLogFunc Env where
+  logFuncL = lens (view #logger) (\x y -> x & #logger `set` y)
+
+{-# START_FILE src/Lib/Config.hs #-}
+{-# LANGUAGE DataKinds     #-}
+{-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+module Lib.Config where
+
+import           RIO
+
+import           Data.Extensible
+import qualified Data.Yaml              as Y
+
+type Config = Record
+  '[ "name" >: Text
+   ]
+
+readConfig :: MonadIO m => FilePath -> m Config
+readConfig = Y.decodeFileThrow
+
+{-# START_FILE test/Driver.hs #-}
+{-# OPTIONS_GHC -F -pgmF tasty-discover #-}
+
+{-# START_FILE README.md #-}
+# git-plantation
+
+## Requirement
+
+## Usage
+
+{-# START_FILE CHANGELOG.md #-}
+# Changelog for {{name}}
+
+## Unreleased changes
+
+{-# START_FILE LICENSE #-}
+MIT License
+
+Copyright (c) {{year}}{{^year}}2018{{/year}} {{author-name}}{{^author-name}}Author name here{{/author-name}}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+{-# START_FILE .gitignore #-}
+.stack-work/
+{{name}}.cabal
