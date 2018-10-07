@@ -53,6 +53,7 @@ install:
   set +ex
 
 script:
+- stack new sample "./$TEMPLATE"
 - |
   set -ex
   cd sample
