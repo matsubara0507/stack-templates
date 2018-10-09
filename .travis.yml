@@ -10,6 +10,9 @@ cache:
 
 matrix:
   include:
+  - env: TEMPLATE="get-opt-cli" ARGS="--resolver lts-12"
+    compiler: ": #stack 8.4.3"
+    addons: {apt: {packages: [libgmp-dev]}}
   - env: TEMPLATE="optparse-applicative-cli" ARGS="--resolver lts-12"
     compiler: ": #stack 8.4.3"
     addons: {apt: {packages: [libgmp-dev]}}
