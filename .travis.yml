@@ -16,6 +16,9 @@ matrix:
   - env: TEMPLATE="optparse-applicative-cli" ARGS="--resolver lts-12"
     compiler: ": #stack 8.4.3"
     addons: {apt: {packages: [libgmp-dev]}}
+  - env: TEMPLATE="lib-extensible" ARGS="--resolver lts-12"
+    compiler: ": #stack 8.4.3"
+    addons: {apt: {packages: [libgmp-dev]}}
 
 before_install:
 # Using compiler above sets CC to an invalid value, so unset it
