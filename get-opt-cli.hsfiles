@@ -215,7 +215,7 @@ instance HasLogFunc Env where
 {-# OPTIONS_GHC -F -pgmF tasty-discover #-}
 
 {-# START_FILE README.md #-}
-# git-plantation
+# {{name}}
 
 ## Requirement
 
