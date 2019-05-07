@@ -1,0 +1,210 @@
+{-# START_FILE package.yaml #-}
+name:                {{name}}
+version:             0.1.0.0
+#synopsis:
+#description:
+homepage:            https://github.com/{{github-username}}{{^github-username}}githubuser{{/github-username}}/{{name}}#readme
+license:             MIT
+author:              {{author-name}}{{^author-name}}Author name here{{/author-name}}
+maintainer:          {{author-email}}{{^author-email}}example@example.com{{/author-email}}
+copyright:           {{copyright}}{{^copyright}}{{year}}{{^year}}2018{{/year}} {{author-name}}{{^author-name}}Author name here{{/author-name}}{{/copyright}}
+category:            {{category}}{{^category}}Web{{/category}}
+description:         Please see the README on GitHub at <https://github.com/{{github-username}}{{^github-username}}githubuser{{/github-username}}/{{name}}#readme>
+
+extra-source-files:
+- README.md
+- CHANGELOG.md
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wredundant-constraints
+
+default-extensions:
+- NoImplicitPrelude
+
+- ConstraintKinds
+- FlexibleContexts
+- FlexibleInstances
+- GeneralizedNewtypeDeriving
+- OverloadedStrings
+- PolyKinds
+- RankNTypes
+- StandaloneDeriving
+- TypeFamilies
+- TypeSynonymInstances
+
+dependencies:
+- base >= 4.7 && < 5
+- rio >= 0.1.1.0
+- extensible >= 0.4.9
+- mix
+
+library:
+  source-dirs: src
+
+executables:
+  {{name}}:
+    main: Main.hs
+    source-dirs: app
+    dependencies:
+    - {{name}}
+    - gitrev
+    - dotenv
+
+tests:
+  {{name}}-test:
+    main: Driver.hs
+    source-dirs: test
+    dependencies:
+    - {{name}}
+    - tasty
+    - tasty-hspec
+    other-modules: []
+
+{-# START_FILE Setup.hs #-}
+import Distribution.Simple
+main = defaultMain
+
+{-# START_FILE app/Main.hs #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLabels      #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+
+module Main where
+
+import           Paths_{{name}}         (version)
+import           RIO
+import qualified RIO.ByteString         as B
+
+import           Configuration.Dotenv   (defaultConfig, loadFile)
+import           Data.Extensible
+import           Data.Extensible.GetOpt
+import           Data.Version           (Version)
+import qualified Data.Version           as Version
+import           Development.GitRev
+import           Lib.Cmd
+import           Mix
+import           Mix.Plugin.Logger      as MixLogger
+
+main :: IO ()
+main = withGetOpt "[options] [input-file]" opts $ \r args ->
+  _ <- tryIO $ loadFile defaultConfig
+  case (r ^. #version, listToMaybe args) of
+    (True, _)      -> B.putStr $ fromString (showVersion version) <> "\n"
+    (_, Nothing)   -> error "please input config file path."
+    (_, Just path) -> runCmd r path
+  where
+    opts = #version @= versionOpt
+        <: #verbose @= verboseOpt
+        <: nil
+
+type Options = Record
+  '[ "version" >: Bool
+   , "verbose" >: Bool
+   ]
+
+versionOpt :: OptDescr' Bool
+versionOpt = optFlag [] ["version"] "Show version"
+
+verboseOpt :: OptDescr' Bool
+verboseOpt = optFlag ['v'] ["verbose"] "Enable verbose mode: verbosity level \"debug\""
+
+showVersion :: Version -> String
+showVersion v = unwords
+  [ "Version"
+  , Version.showVersion v ++ ","
+  , "Git revision"
+  , $(gitHash)
+  , "(" ++ $(gitCommitCount) ++ " commits)"
+  ]
+
+runCmd :: Options -> FilePath -> IO ()
+runCmd opts _path = Mix.run plugin cmd
+  where
+    plugin :: Mix.Plugin () IO Env
+    plugin = hsequence
+        $ #logger <@=> MixLogger.buildPlugin logOpts
+       <: nil
+    logOpts = #handle @= stdout <: #verbose @= (opts ^. #verbose) <: nil
+
+{-# START_FILE src/Lib/Run.hs #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeOperators    #-}
+
+module Lib.Run where
+
+import           RIO
+
+import           Lib.Env
+
+cmd :: RIO Env ()
+cmd = showNotImpl
+
+showNotImpl :: MonadIO m => m ()
+showNotImpl = hPutBuilder stdout "not yet implement command."
+
+{-# START_FILE src/Lib/Env.hs #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeOperators    #-}
+
+module Lib.Env where
+
+import           Data.Extensible
+
+type Env = Record
+  '[ "logger" >: LogFunc
+   ]
+
+{-# START_FILE test/Driver.hs #-}
+{-# OPTIONS_GHC -F -pgmF tasty-discover #-}
+
+{-# START_FILE README.md #-}
+# {{name}}
+
+## Requirement
+
+## Usage
+
+{-# START_FILE CHANGELOG.md #-}
+# Changelog for {{name}}
+
+## Unreleased changes
+
+{-# START_FILE LICENSE #-}
+MIT License
+
+Copyright (c) {{year}}{{^year}}2019{{/year}} {{author-name}}{{^author-name}}Author name here{{/author-name}}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+{-# START_FILE .gitignore #-}
+.stack-work/
+{{name}}.cabal
+.env
