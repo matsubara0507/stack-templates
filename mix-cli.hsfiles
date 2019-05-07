@@ -208,3 +208,15 @@ SOFTWARE.
 .stack-work/
 {{name}}.cabal
 .env
+
+{-# START_FILE stack.yaml #-}
+resolver: lts-13.20
+packages:
+- '.'
+extra-deps:
+- extensible-0.5
+- github: matsubara0507/mix.hs
+  commit: a476a706aa2b319683cc4eba612897486f01e9ac
+  subdirs:
+  - mix
+  - mix-plugin-github
