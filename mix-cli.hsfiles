@@ -94,8 +94,8 @@ main :: IO ()
 main = withGetOpt' "[options] [input-file]" opts $ \r args usage -> do
   _ <- tryIO $ loadFile defaultConfig
   if | r ^. #help    -> hPutBuilder stdout (fromString usage)
-     | r ^. #version -> hPutBuilder stdout (Version.build version)
-     | otherwise        -> runCmd r (listToMaybe args)
+     | r ^. #version -> hPutBuilder stdout (Version.build version <> "\n")
+     | otherwise     -> runCmd r (listToMaybe args)
   where
     opts = #help    @= helpOpt
         <: #version @= versionOpt
@@ -190,7 +190,7 @@ cmd :: RIO Env ()
 cmd = showNotImpl
 
 showNotImpl :: MonadIO m => m ()
-showNotImpl = hPutBuilder stdout "not yet implement command."
+showNotImpl = hPutBuilder stdout "not yet implement command.\n"
 
 {-# START_FILE src/Lib/Env.hs #-}
 module Lib.Env where
