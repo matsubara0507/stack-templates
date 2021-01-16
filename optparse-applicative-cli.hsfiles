@@ -58,20 +58,6 @@ executables:
     - gitrev
     - optparse-applicative
 
-tests:
-  {{name}}-test:
-    main: Driver.hs
-    source-dirs: test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - {{name}}
-    - tasty
-    - tasty-hspec
-    other-modules: []
-
 {-# START_FILE Setup.hs #-}
 import Distribution.Simple
 main = defaultMain
@@ -279,9 +265,6 @@ type Config = Record
 
 readConfig :: MonadIO m => FilePath -> m Config
 readConfig = Y.decodeFileThrow
-
-{-# START_FILE test/Driver.hs #-}
-{-# OPTIONS_GHC -F -pgmF tasty-discover #-}
 
 {-# START_FILE README.md #-}
 # {{name}}
