@@ -18,6 +18,7 @@ jobs:
         - lib-extensible
         - mix-cli
         - optparse-applicative-cli
+        - mix-cli-with-bazel
 
     steps:
     - uses: actions/checkout@v2

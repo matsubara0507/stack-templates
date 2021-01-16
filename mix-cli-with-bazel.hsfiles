@@ -1,0 +1,551 @@
+{-# START_FILE package.yaml #-}
+name:                {{name}}
+version:             0.1.0
+#synopsis:
+#description:
+homepage:            https://github.com/{{github-username}}{{^github-username}}githubuser{{/github-username}}/{{name}}#readme
+license:             MIT
+author:              {{author-name}}{{^author-name}}Author name here{{/author-name}}
+maintainer:          {{author-email}}{{^author-email}}example@example.com{{/author-email}}
+copyright:           {{copyright}}{{^copyright}}{{year}}{{^year}}2018{{/year}} {{author-name}}{{^author-name}}Author name here{{/author-name}}{{/copyright}}
+category:            {{category}}{{^category}}Web{{/category}}
+description:         Please see the README on GitHub at <https://github.com/{{github-username}}{{^github-username}}githubuser{{/github-username}}/{{name}}#readme>
+
+extra-source-files:
+- README.md
+- CHANGELOG.md
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wredundant-constraints
+
+default-extensions:
+- NoImplicitPrelude
+
+- ConstraintKinds
+- DataKinds
+- FlexibleContexts
+- FlexibleInstances
+- GeneralizedNewtypeDeriving
+- LambdaCase
+- MultiWayIf
+- NumericUnderscores
+- OverloadedLabels
+- OverloadedStrings
+- PolyKinds
+- RankNTypes
+- StandaloneDeriving
+- TypeFamilies
+- TypeOperators
+- TypeSynonymInstances
+
+dependencies:
+- base >= 4.7 && < 5
+- rio >= 0.1.1.0
+- extensible >= 0.6
+- mix
+
+library:
+  source-dirs: src
+
+executables:
+  {{name}}:
+    main: Main.hs
+    source-dirs: app
+    dependencies:
+    - {{name}}
+    - githash
+    - dotenv
+
+tests:
+  {{name}}-test:
+    main: Spec.hs
+    source-dirs: test
+    dependencies:
+    - {{name}}
+    - tasty
+    - tasty-hspec
+    other-modules: []
+
+{-# START_FILE Setup.hs #-}
+import Distribution.Simple
+main = defaultMain
+
+{-# START_FILE app/Main.hs #-}
+module Main where
+
+import           Paths_{{name}}         (version)
+import           RIO
+
+import           Configuration.Dotenv   (defaultConfig, loadFile)
+import           Data.Extensible
+import           Data.Extensible.GetOpt
+import qualified Data.Version           as Version
+import           GetOpt                 (withGetOpt')
+import           Lib.Cmd
+import           Lib.Env
+import           Mix
+import           Mix.Plugin.Logger      as MixLogger
+
+main :: IO ()
+main = withGetOpt' "[options] [input-file]" opts $ \r args usage -> do
+  _ <- tryIO $ loadFile defaultConfig
+  if | r ^. #help    -> hPutBuilder stdout (fromString usage)
+     | r ^. #version -> hPutBuilder stdout (fromString $ Version.showVersion version <> "\n")
+     | otherwise     -> runCmd r (listToMaybe args)
+  where
+    opts = #help    @= helpOpt
+        <: #version @= versionOpt
+        <: #verbose @= verboseOpt
+        <: nil
+
+type Options = Record
+  '[ "help"    >: Bool
+   , "version" >: Bool
+   , "verbose" >: Bool
+   ]
+
+helpOpt :: OptDescr' Bool
+helpOpt = optFlag ['h'] ["help"] "Show this help text"
+
+versionOpt :: OptDescr' Bool
+versionOpt = optFlag [] ["version"] "Show version"
+
+verboseOpt :: OptDescr' Bool
+verboseOpt = optFlag ['v'] ["verbose"] "Enable verbose mode: verbosity level \"debug\""
+
+runCmd :: Options -> Maybe FilePath -> IO ()
+runCmd opts _path = Mix.run plugin cmd
+  where
+    plugin :: Mix.Plugin () IO Env
+    plugin = hsequence
+        $ #logger <@=> MixLogger.buildPlugin logOpts
+       <: nil
+    logOpts = #handle @= stdout <: #verbose @= (opts ^. #verbose) <: nil
+
+{-# START_FILE app/GetOpt.hs #-}
+module GetOpt
+    ( withGetOpt'
+    ) where
+
+import           RIO
+
+import           Data.Extensible
+import           Data.Extensible.GetOpt (OptionDescr, getOptRecord)
+import           System.Environment     (getArgs, getProgName)
+import           System.Exit            (die)
+import           System.IO              (hPutStrLn)
+
+withGetOpt' :: MonadIO m => String -- ^ Non-option usage
+  -> RecordOf (OptionDescr h) xs -- ^ option desciptors
+  -> (RecordOf h xs -> [String] -> String -> m a) -- ^ the result, non-option arguments and usage
+  -> m a
+withGetOpt' nonOptUsage descs k =
+  getOptRecord descs <$> liftIO getArgs >>= \case
+    (r, xs, [],  usage) -> liftIO (mkUsage usage) >>= k r xs
+    (_, _, errs, usage) -> liftIO $ do
+      mapM_ (hPutStrLn stderr) errs
+      mkUsage usage >>= die
+  where
+    mkUsage usage = usage . (++ (' ' : nonOptUsage)) <$> getProgName
+
+{-# START_FILE src/Lib/Cmd.hs #-}
+module Lib.Cmd where
+
+import           RIO
+
+import           Lib.Env
+
+cmd :: RIO Env ()
+cmd = showNotImpl
+
+showNotImpl :: MonadIO m => m ()
+showNotImpl = hPutBuilder stdout "not yet implement command.\n"
+
+{-# START_FILE src/Lib/Env.hs #-}
+module Lib.Env where
+
+import           RIO
+
+import           Data.Extensible
+
+type Env = Record
+  '[ "logger" >: LogFunc
+   ]
+
+{-# START_FILE test/Spec.hs #-}
+module Main where
+
+import           RIO
+
+import           Test.Tasty
+
+main :: IO ()
+main = defaultMain $ testGroup "{{name}} package"
+  [
+  ]
+
+{-# START_FILE build/rules/common.bzl #-}
+GHC_FLAGS = [
+    "-v1",
+    "-j8",
+    "-fdiagnostics-color=always",
+    "-ferror-spans",
+    "-Wall",
+    "-Wcompat",
+    "-Wincomplete-record-updates",
+    "-Wincomplete-uni-patterns",
+    "-Wredundant-constraints",
+    "-optP-Wno-nonportable-include-path",
+    "-DBAZEL_BUILD=1",
+    "-XNoImplicitPrelude",
+    "-XDataKinds",
+    "-XFlexibleContexts",
+    "-XFlexibleInstances",
+    "-XGeneralizedNewtypeDeriving",
+    "-XLambdaCase",
+    "-XMultiWayIf",
+    "-XNumericUnderscores",
+    "-XOverloadedLabels",
+    "-XOverloadedStrings",
+    "-XPolyKinds",
+    "-XRankNTypes",
+    "-XStandaloneDeriving",
+    "-XTupleSections",
+    "-XTypeApplications",
+    "-XTypeFamilies",
+    "-XTypeOperators",
+    "-XTypeSynonymInstances",
+]
+
+{-# START_FILE build/rules/haskell/BUILD.bazel #-}
+filegroup(
+    name = "all",
+    srcs = glob(["*"]),
+    visibility = ["//visibility:public"],
+)
+
+exports_files(
+    [
+        "Paths_module.hs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+{-# START_FILE build/rules/haskell/def.bzl #-}
+load("@rules_haskell//haskell:defs.bzl", "haskell_library")
+
+def _generate_paths_module_impl(ctx):
+    paths_file = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.expand_template(
+        template = ctx.file._template,
+        output = paths_file,
+        substitutions = {
+            "%{module_name}": ctx.attr.module,
+            "%{version}": str(ctx.attr.version.replace(".", ",")),
+        },
+    )
+    return struct(files = depset([paths_file]))
+
+_generate_paths_module = rule(
+    implementation = _generate_paths_module_impl,
+    attrs = {
+        "module": attr.string(),
+        "version": attr.string(),
+        "_template": attr.label(
+            default = ":Paths_module.hs",
+            allow_single_file = True,
+        ),
+    },
+)
+
+def paths_module(name, package, version, dir = "gen_paths", deps = ["@stackage//:base"], **kwargs):
+    module_name = "Paths_" + package.replace("-", "_")
+    paths_file = dir + "/" + module_name + ".hs"
+    _generate_paths_module(
+        name = paths_file,
+        module = module_name,
+        version = version,
+    )
+    haskell_library(
+        name = name,
+        srcs = [paths_file],
+        deps = deps,
+        **kwargs,
+    )
+
+{-# START_FILE build/rules/haskell/Paths_module.hs #-}
+module %{module_name} where
+
+import Prelude
+import Data.Version (Version (..))
+
+version :: Version
+version = Version [%{version}] []
+
+{-# START_FILE .bazelrc #-}
+build:ci --loading_phase_threads=1
+build:ci --jobs=2
+build:ci --verbose_failures
+common:ci --color=no
+test:ci --test_output=errors
+common --action_env=BAZEL_USE_CPP_ONLY_TOOLCHAIN=1
+
+
+# test environment does not propagate locales by default
+# some tests reads files written in UTF8, we need to propagate the correct
+# environment variables, such as LOCALE_ARCHIVE
+# We also need to setup an utf8 locale
+test --test_env=LANG=en_US.utf8 --test_env=LOCALE_ARCHIVE
+
+try-import .bazelrc.local
+
+{-# START_FILE .bazelversion #-}
+3.3.1
+
+{-# START_FILE BUILD.bazel #-}
+package(default_visibility = ["//visibility:public"])
+
+load(
+    "@rules_haskell//haskell:defs.bzl",
+    "haskell_library",
+    "haskell_binary",
+)
+
+load("//:build/common.bzl", "GHC_FLAGS")
+load("//build/rules/haskell:def.bzl", "paths_module")
+
+haskell_library(
+    name = "{{name}}-library",
+    src_strip_prefix = "src",
+    srcs = glob(['src/**/*.hs']),
+    deps = [
+        "@stackage//:base",
+        "@stackage//:rio",
+        "@stackage//:extensible",
+        "@stackage//:mix",
+    ],
+    compiler_flags = GHC_FLAGS,
+)
+
+paths_module(
+    name = "paths_module",
+    package = "{{name}}",
+    version = "1.0.0",
+)
+
+haskell_binary(
+    name = "{{name}}",
+    srcs = glob(["app/**/*.hs"]),
+    deps = [
+        ":{{name}}-library",
+        ":paths_module",
+        "@stackage//:base",
+        "@stackage//:rio",
+        "@stackage//:extensible",
+        "@stackage//:dotenv",
+        "@stackage//:mix",
+    ],
+    compiler_flags = GHC_FLAGS,
+)
+
+{-# START_FILE WORKSPACE #-}
+workspace(name = "{{name}}")
+
+load(
+    "@bazel_tools//tools/build_defs/repo:http.bzl",
+    "http_archive"
+)
+
+http_archive(
+    name = "rules_python",
+    sha256 = "b6d46438523a3ec0f3cead544190ee13223a52f6a6765a29eae7b7cc24cc83a0",
+    urls = ["https://github.com/bazelbuild/rules_python/releases/download/0.1.0/rules_python-0.1.0.tar.gz"],
+)
+
+http_archive(
+    name = "rules_haskell",
+    strip_prefix = "rules_haskell-fa8d2c53449ee1659f5f503cfe3141d27cb8b869",
+    urls = ["https://github.com/tweag/rules_haskell/archive/fa8d2c53449ee1659f5f503cfe3141d27cb8b869.tar.gz"],
+    sha256 = "2b9367d5c5878e4416fca5d4b4c11a22c3e24d73264d4b3b124d1c75bb0bd925",
+)
+
+load(
+    "@rules_haskell//haskell:repositories.bzl",
+    "rules_haskell_dependencies",
+)
+
+rules_haskell_dependencies()
+
+load(
+    "@rules_haskell//haskell:cabal.bzl",
+    "stack_snapshot"
+)
+
+stack_snapshot(
+    name = "stackage",
+    packages = [
+        "base",
+        "rio",
+        "dotenv",
+        "extensible",
+        "mix",
+    ],
+    local_snapshot = "//:stack-snapshot.yaml",
+)
+
+load(
+    "@rules_haskell//haskell:toolchain.bzl",
+    "rules_haskell_toolchains",
+)
+
+rules_haskell_toolchains(version = "8.8.4")
+
+{-# START_FILE stack-snapshot.yaml #-}
+resolver: lts-16.29
+packages:
+- membership-0
+- extensible-0.8.1
+- incremental-0.3.1
+- github: matsubara0507/mix.hs
+  commit: 75714be080db16f6a4f9d0a22e86947ffcdadc57
+  subdirs:
+  - mix
+
+{-# START_FILE README.md #-}
+# {{name}}
+
+## Requirement
+
+## Usage
+
+## Build
+
+### Docker
+
+```
+$ stack --docker build -j 1 Cabal # if out of memory in docker
+$ stack --docker --local-bin-path=./bin install
+$ docker build -t {{github-username}}{{^github-username}}githubuser{{/github-username}}/{{name}} . --build-arg local_bin_path=./bin
+```
+
+{-# START_FILE CHANGELOG.md #-}
+# Changelog for {{name}}
+
+## Unreleased changes
+
+{-# START_FILE LICENSE #-}
+MIT License
+
+Copyright (c) {{year}}{{^year}}2019{{/year}} {{author-name}}{{^author-name}}Author name here{{/author-name}}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+{-# START_FILE .gitignore #-}
+.stack-work/
+*.cabal
+.env
+bin/*
+!.gitkeep
+bazel-bin
+bazel-{{name}}
+bazel-out
+bazel-testlogs
+
+{-# START_FILE .dockerignore #-}
+.stack-work/
+
+{-# START_FILE Dockerfile #-}
+FROM matsubara0507/ubuntu-for-haskell
+ARG local_bin_path
+RUN mkdir -p /root/.local/bin && mkdir -p /work
+ENV PATH /root/.local/bin:$PATH
+WORKDIR /work
+COPY ${local_bin_path} /root/.local/bin
+
+{-# START_FILE bin/.gitkeep #-}
+
+{-# START_FILE stack.yaml #-}
+resolver: lts-16.29
+packages:
+- '.'
+extra-deps:
+- membership-0
+- extensible-0.8.1
+- incremental-0.3.1
+- github: matsubara0507/mix.hs
+  commit: 75714be080db16f6a4f9d0a22e86947ffcdadc57
+  subdirs:
+  - mix
+
+docker:
+  repo: matsubara0507/stack-build
+  enable: false
+
+{-# START_FILE .hlint.yaml #-}
+- ignore: {name: Use .}
+
+{-# START_FILE .stylish-haskell.yaml #-}
+steps:
+- simple_align:
+    cases: true
+    top_level_patterns: true
+    records: true
+
+- imports:
+    align: global
+    list_align: after_alias
+    pad_module_names: true
+    long_list_align: inline
+    empty_list_align: inherit
+    list_padding: 4
+    separate_lists: true
+    space_surround: false
+
+- language_pragmas:
+    style: vertical
+    align: true
+    remove_redundant: true
+
+- trailing_whitespace: {}
+
+columns: 80
+
+newline: native
+
+language_extensions:
+- ConstraintKinds
+- DataKinds
+- FlexibleContexts
+- FlexibleInstances
+- GeneralizedNewtypeDeriving
+- LambdaCase
+- MultiWayIf
+- NumericUnderscores
+- OverloadedLabels
+- OverloadedStrings
+- PolyKinds
+- RankNTypes
+- StandaloneDeriving
+- TypeFamilies
+- TypeOperators
+- TypeSynonymInstances
