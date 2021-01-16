@@ -56,20 +56,6 @@ executables:
     - {{name}}
     - gitrev
 
-tests:
-  {{name}}-test:
-    main: Driver.hs
-    source-dirs: test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - {{name}}
-    - tasty
-    - tasty-hspec
-    other-modules: []
-
 {-# START_FILE Setup.hs #-}
 import Distribution.Simple
 main = defaultMain
@@ -178,7 +164,7 @@ import           Data.Extensible
 import           Lib.Cmd.Options
 import           Lib.Env
 
-run :: (MonadUnliftIO m, MonadThrow m) => Options -> m ()
+run :: (MonadUnliftIO m) => Options -> m ()
 run opts = do
   logOpts <- logOptionsHandle stdout (opts ^. #verbose)
   withLogFunc logOpts $ \logger -> do
@@ -210,9 +196,6 @@ type Env = Record
 
 instance HasLogFunc Env where
   logFuncL = lens (view #logger) (\x y -> x & #logger `set` y)
-
-{-# START_FILE test/Driver.hs #-}
-{-# OPTIONS_GHC -F -pgmF tasty-discover #-}
 
 {-# START_FILE README.md #-}
 # {{name}}
