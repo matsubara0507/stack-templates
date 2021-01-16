@@ -19,14 +19,13 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Cache .stack
-      id: cache-stack
+    - name: Cache Bazel
       uses: actions/cache@v2
       with:
-        path: ~/.stack
-        key: ${{ runner.os }}-stack-${{ hashFiles('**/stack.yaml.lock') }}-${{ hashFiles('**/package.yaml') }}
-        restore-keys: |
-          ${{ runner.os }}-stack-
+        path: |
+          ~/.cache/bazel
+        key: ${{ runner.os }}-${{ hashFiles('WORKSPACE') }}
+
     - uses: haskell/actions/setup@v1.1.6
       name: Setup Haskell
       with:
