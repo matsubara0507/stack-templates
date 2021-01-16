@@ -281,14 +281,15 @@ COPY ${local_bin_path} /root/.local/bin
 {-# START_FILE bin/.gitkeep #-}
 
 {-# START_FILE stack.yaml #-}
-resolver: lts-16.12
+resolver: lts-16.29
 packages:
 - '.'
 extra-deps:
-- extensible-0.8
 - membership-0
+- extensible-0.8.1
+- incremental-0.3.1
 - github: matsubara0507/mix.hs
-  commit: a0b2b9394c340186c9a8a63808f0db1752ada4ae
+  commit: 75714be080db16f6a4f9d0a22e86947ffcdadc57
   subdirs:
   - mix
 
