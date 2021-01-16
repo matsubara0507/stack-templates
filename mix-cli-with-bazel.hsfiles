@@ -188,7 +188,7 @@ main = defaultMain $ testGroup "{{name}} package"
   [
   ]
 
-{-# START_FILE build/rules/common.bzl #-}
+{-# START_FILE build/common.bzl #-}
 GHC_FLAGS = [
     "-v1",
     "-j8",
