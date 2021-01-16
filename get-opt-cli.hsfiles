@@ -178,7 +178,7 @@ import           Data.Extensible
 import           Lib.Cmd.Options
 import           Lib.Env
 
-run :: (MonadUnliftIO m, MonadThrow m) => Options -> m ()
+run :: (MonadUnliftIO m) => Options -> m ()
 run opts = do
   logOpts <- logOptionsHandle stdout (opts ^. #verbose)
   withLogFunc logOpts $ \logger -> do
