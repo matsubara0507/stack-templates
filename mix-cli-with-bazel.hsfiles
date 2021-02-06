@@ -83,18 +83,18 @@ import           RIO
 import           Configuration.Dotenv   (defaultConfig, loadFile)
 import           Data.Extensible
 import           Data.Extensible.GetOpt
+import qualified Data.Version           as Version
 import           GetOpt                 (withGetOpt')
 import           Lib.Cmd
 import           Lib.Env
 import           Mix
 import           Mix.Plugin.Logger      as MixLogger
-import qualified Version
 
 main :: IO ()
 main = withGetOpt' "[options] [input-file]" opts $ \r args usage -> do
   _ <- tryIO $ loadFile defaultConfig
   if | r ^. #help    -> hPutBuilder stdout (fromString usage)
-     | r ^. #version -> hPutBuilder stdout (Version.build version <> "\n")
+     | r ^. #version -> hPutBuilder stdout (fromString $ Version.showVersion version <> "\n")
      | otherwise     -> runCmd r (listToMaybe args)
   where
     opts = #help    @= helpOpt
@@ -152,33 +152,6 @@ withGetOpt' nonOptUsage descs k =
   where
     mkUsage usage = usage . (++ (' ' : nonOptUsage)) <$> getProgName
 
-{-# START_FILE app/Version.hs #-}
-{-# LANGUAGE TemplateHaskell  #-}
-
-module Version
-  ( build
-  ) where
-
-import           RIO
-
-import           Data.Version (Version)
-import qualified Data.Version as Version
-import qualified GitHash
-
-build :: Version -> Builder
-build v = toBuilder $ unwords
-  [ "Version"
-  , Version.showVersion v ++ ","
-  , "Git revision"
-  , GitHash.giCommitDate gi
-  , "(" ++ show (GitHash.giCommitCount gi) ++ " commits)"
-  ]
-  where
-    gi = $$(GitHash.tGitInfoCwd)
-
-toBuilder :: String -> Builder
-toBuilder = encodeUtf8Builder . fromString
-
 {-# START_FILE src/Lib/Cmd.hs #-}
 module Lib.Cmd where
 
@@ -214,6 +187,233 @@ main :: IO ()
 main = defaultMain $ testGroup "{{name}} package"
   [
   ]
+
+{-# START_FILE build/common.bzl #-}
+GHC_FLAGS = [
+    "-v1",
+    "-j8",
+    "-fdiagnostics-color=always",
+    "-ferror-spans",
+    "-Wall",
+    "-Wcompat",
+    "-Wincomplete-record-updates",
+    "-Wincomplete-uni-patterns",
+    "-Wredundant-constraints",
+    "-optP-Wno-nonportable-include-path",
+    "-DBAZEL_BUILD=1",
+    "-XNoImplicitPrelude",
+    "-XDataKinds",
+    "-XFlexibleContexts",
+    "-XFlexibleInstances",
+    "-XGeneralizedNewtypeDeriving",
+    "-XLambdaCase",
+    "-XMultiWayIf",
+    "-XNumericUnderscores",
+    "-XOverloadedLabels",
+    "-XOverloadedStrings",
+    "-XPolyKinds",
+    "-XRankNTypes",
+    "-XStandaloneDeriving",
+    "-XTupleSections",
+    "-XTypeApplications",
+    "-XTypeFamilies",
+    "-XTypeOperators",
+    "-XTypeSynonymInstances",
+]
+
+{-# START_FILE build/rules/haskell/BUILD.bazel #-}
+filegroup(
+    name = "all",
+    srcs = glob(["*"]),
+    visibility = ["//visibility:public"],
+)
+
+exports_files(
+    [
+        "Paths_module.hs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+{-# START_FILE build/rules/haskell/def.bzl #-}
+load("@rules_haskell//haskell:defs.bzl", "haskell_library")
+
+def _generate_paths_module_impl(ctx):
+    paths_file = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.expand_template(
+        template = ctx.file._template,
+        output = paths_file,
+        substitutions = {
+            "%{module_name}": ctx.attr.module,
+            "%{version}": str(ctx.attr.version.replace(".", ",")),
+        },
+    )
+    return struct(files = depset([paths_file]))
+
+_generate_paths_module = rule(
+    implementation = _generate_paths_module_impl,
+    attrs = {
+        "module": attr.string(),
+        "version": attr.string(),
+        "_template": attr.label(
+            default = ":Paths_module.hs",
+            allow_single_file = True,
+        ),
+    },
+)
+
+def paths_module(name, package, version, dir = "gen_paths", deps = ["@stackage//:base"], **kwargs):
+    module_name = "Paths_" + package.replace("-", "_")
+    paths_file = dir + "/" + module_name + ".hs"
+    _generate_paths_module(
+        name = paths_file,
+        module = module_name,
+        version = version,
+    )
+    haskell_library(
+        name = name,
+        srcs = [paths_file],
+        deps = deps,
+        **kwargs,
+    )
+
+{-# START_FILE build/rules/haskell/Paths_module.hs #-}
+module %{module_name} where
+
+import Prelude
+import Data.Version (Version (..))
+
+version :: Version
+version = Version [%{version}] []
+
+{-# START_FILE .bazelrc #-}
+build:ci --loading_phase_threads=1
+build:ci --jobs=2
+build:ci --verbose_failures
+common:ci --color=no
+test:ci --test_output=errors
+common --action_env=BAZEL_USE_CPP_ONLY_TOOLCHAIN=1
+
+
+# test environment does not propagate locales by default
+# some tests reads files written in UTF8, we need to propagate the correct
+# environment variables, such as LOCALE_ARCHIVE
+# We also need to setup an utf8 locale
+test --test_env=LANG=en_US.utf8 --test_env=LOCALE_ARCHIVE
+
+try-import .bazelrc.local
+
+{-# START_FILE .bazelversion #-}
+3.3.1
+
+{-# START_FILE BUILD.bazel #-}
+package(default_visibility = ["//visibility:public"])
+
+load(
+    "@rules_haskell//haskell:defs.bzl",
+    "haskell_library",
+    "haskell_binary",
+)
+
+load("//:build/common.bzl", "GHC_FLAGS")
+load("//build/rules/haskell:def.bzl", "paths_module")
+
+haskell_library(
+    name = "{{name}}-library",
+    src_strip_prefix = "src",
+    srcs = glob(['src/**/*.hs']),
+    deps = [
+        "@stackage//:base",
+        "@stackage//:rio",
+        "@stackage//:extensible",
+        "@stackage//:mix",
+    ],
+    compiler_flags = GHC_FLAGS,
+)
+
+paths_module(
+    name = "paths_module",
+    package = "{{name}}",
+    version = "1.0.0",
+)
+
+haskell_binary(
+    name = "{{name}}",
+    srcs = glob(["app/**/*.hs"]),
+    deps = [
+        ":{{name}}-library",
+        ":paths_module",
+        "@stackage//:base",
+        "@stackage//:rio",
+        "@stackage//:extensible",
+        "@stackage//:dotenv",
+        "@stackage//:mix",
+    ],
+    compiler_flags = GHC_FLAGS,
+)
+
+{-# START_FILE WORKSPACE #-}
+workspace(name = "{{name}}")
+
+load(
+    "@bazel_tools//tools/build_defs/repo:http.bzl",
+    "http_archive"
+)
+
+http_archive(
+    name = "rules_python",
+    sha256 = "b6d46438523a3ec0f3cead544190ee13223a52f6a6765a29eae7b7cc24cc83a0",
+    urls = ["https://github.com/bazelbuild/rules_python/releases/download/0.1.0/rules_python-0.1.0.tar.gz"],
+)
+
+http_archive(
+    name = "rules_haskell",
+    strip_prefix = "rules_haskell-fa8d2c53449ee1659f5f503cfe3141d27cb8b869",
+    urls = ["https://github.com/tweag/rules_haskell/archive/fa8d2c53449ee1659f5f503cfe3141d27cb8b869.tar.gz"],
+    sha256 = "2b9367d5c5878e4416fca5d4b4c11a22c3e24d73264d4b3b124d1c75bb0bd925",
+)
+
+load(
+    "@rules_haskell//haskell:repositories.bzl",
+    "rules_haskell_dependencies",
+)
+
+rules_haskell_dependencies()
+
+load(
+    "@rules_haskell//haskell:cabal.bzl",
+    "stack_snapshot"
+)
+
+stack_snapshot(
+    name = "stackage",
+    packages = [
+        "base",
+        "rio",
+        "dotenv",
+        "extensible",
+        "mix",
+    ],
+    local_snapshot = "//:stack-snapshot.yaml",
+)
+
+load(
+    "@rules_haskell//haskell:toolchain.bzl",
+    "rules_haskell_toolchains",
+)
+
+rules_haskell_toolchains(version = "8.8.4")
+
+{-# START_FILE stack-snapshot.yaml #-}
+resolver: lts-16.29
+packages:
+- membership-0
+- extensible-0.8.1
+- incremental-0.3.1
+- github: matsubara0507/mix.hs
+  commit: 75714be080db16f6a4f9d0a22e86947ffcdadc57
+  subdirs:
+  - mix
 
 {-# START_FILE README.md #-}
 # {{name}}
@@ -266,6 +466,10 @@ SOFTWARE.
 .env
 bin/*
 !.gitkeep
+bazel-bin
+bazel-{{name}}
+bazel-out
+bazel-testlogs
 
 {-# START_FILE .dockerignore #-}
 .stack-work/
